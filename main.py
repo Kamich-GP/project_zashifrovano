@@ -5,7 +5,7 @@ from geopy import Nominatim
 
 
 # Создаем объект бота
-bot = telebot.TeleBot('7128987490:AAH10gUO9elimFV_jJW5a5cHHmRv2ukELGo')
+bot = telebot.TeleBot('TOKEN')
 # Работа с картами
 geolocator = Nominatim(user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36')
 
