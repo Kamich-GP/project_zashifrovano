@@ -60,9 +60,9 @@ def get_location(message, user_name, user_number):
     user_id = message.from_user.id
     # Если юзер отправил локацию по кнопке
     if message.location:
-        user_location = geolocator.reverse(f'{message.location.longitude}, '
-                                           f'{message.location.latitude}')
-        db.register(user_id, user_name, user_number, user_location)
+        user_location = geolocator.reverse(f'{message.location.latitude}, '
+                                           f'{message.location.longitude}')
+        db.register(user_id, user_name, user_number, str(user_location))
         bot.send_message(user_id, 'Регистрация прошла упешно!')
     # Если юзер отправил локацию не по кнопке
     else:
