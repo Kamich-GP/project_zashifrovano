@@ -5,9 +5,11 @@ from geopy import Nominatim
 
 
 # Создаем объект бота
-bot = telebot.TeleBot('TOKEN')
+bot = telebot.TeleBot('7128987490:AAH10gUO9elimFV_jJW5a5cHHmRv2ukELGo')
 # Работа с картами
 geolocator = Nominatim(user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36')
+# id админа
+admin_id = 6775701667
 
 # Обработчик команды /start
 @bot.message_handler(commands=['start'])
@@ -71,6 +73,156 @@ def get_location(message, user_name, user_number):
         # Возврат на этап получения локации
         bot.register_next_step_handler(message, get_location,
                                        user_name, user_number)
+
+
+# Обработка команды /admin
+@bot.message_handler(commands=['admin'])
+def admin(message):
+    if message.from_user.id == admin_id:
+        bot.send_message(admin_id, 'Добро пожаловать в админ-панель!',
+                         reply_markup=bt.admin_buttons())
+        # Переход на этап выбора команды
+        bot.register_next_step_handler(message, admin_choice)
+    else:
+        bot.send_message(message.from_user.id, 'Вы не админ!\n'
+                                               'Нажмите /start')
+
+
+# Этап выбора команды админом
+def admin_choice(message):
+    if message.text == 'Добавить продукт':
+        bot.send_message(admin_id, 'Итак, давайте начнем! Введите название товара',
+                         reply_markup=telebot.types.ReplyKeyboardRemove())
+        # Переход на этап получения названия
+        bot.register_next_step_handler(message, get_pr_name)
+    elif message.text == 'Удалить продукт':
+        pr_check = db.check_pr()
+        if pr_check:
+            bot.send_message(admin_id, 'Введите id товара')
+            # Переход на этап получения id товара
+            bot.register_next_step_handler(message, get_pr_to_del)
+        else:
+            bot.send_message(admin_id, 'Продуктов нет!')
+            # Возвращаем на этап выбора команды
+            bot.register_next_step_handler(message, admin_choice)
+    elif message.text == 'Изменить количество продукта':
+        pr_check = db.check_pr()
+        if pr_check:
+            bot.send_message(admin_id, 'Введите id товара')
+            # Переход на этап получения id товара
+            bot.register_next_step_handler(message, get_pr_to_edit)
+        else:
+            bot.send_message(admin_id, 'Продуктов нет!')
+            # Возвращаем на этап выбора команды
+            bot.register_next_step_handler(message, admin_choice)
+
+
+# Этап получения названия
+def get_pr_name(message):
+    pr_name = message.text
+    bot.send_message(admin_id, 'Теперь придумайте описание товару!')
+    # Переход на этап получения описания
+    bot.register_next_step_handler(message, get_pr_description, pr_name)
+
+
+# Этап получения описания
+def get_pr_description(message, pr_name):
+    pr_description = message.text
+    bot.send_message(admin_id, 'Какое количество товара?')
+    # Переход на этап получения количества
+    bot.register_next_step_handler(message, get_pr_count,
+                                   pr_name, pr_description)
+
+
+# Этап получения количества
+def get_pr_count(message, pr_name, pr_description):
+    # Проверка на тип данных
+    if message.text != int(message.text):
+        print(type(message.text))
+        bot.send_message(admin_id, 'Пишите только целые числа!')
+        # Возвращаем на этап получения количества
+        bot.register_next_step_handler(message, get_pr_count,
+                                       pr_name, pr_description)
+    else:
+        pr_count = int(message.text)
+        bot.send_message(admin_id, 'Какая цена у товара?')
+        # Переход на этап получения цены
+        bot.register_next_step_handler(message, get_pr_price,
+                                       pr_name, pr_description, pr_count)
+
+
+# Этап получения цены
+def get_pr_price(message, pr_name, pr_description, pr_count):
+    # Проверка на тип данных
+    if message.text != float(message.text):
+        bot.send_message(admin_id, 'Пишите только дробные числа!')
+        # Возвращаем на этап получения количества
+        bot.register_next_step_handler(message, get_pr_price,
+                                       pr_name, pr_description, pr_count)
+    else:
+        pr_price = float(message.text)
+        bot.send_message(admin_id, 'Последний этап, зайдите на сайт '
+                                   'https://postimages.org/ и загрузите туда фото.\n'
+                                   'Затем, отправьте мне прямую ссылку на фото!')
+        # Переход на этап получения фото
+        bot.register_next_step_handler(message, get_pr_photo,
+                                       pr_name, pr_description, pr_count, pr_price)
+
+
+# Этап получения фото
+def get_pr_photo(message, pr_name, pr_description, pr_count, pr_price):
+    pr_photo = message.text
+    db.add_pr(pr_name, pr_description, pr_count, pr_price, pr_photo)
+    bot.send_message(admin_id, 'Готово! Что-то ещё?',
+                     reply_markup=bt.admin_buttons())
+    # Переход на этап выбора команды
+    bot.register_next_step_handler(message, admin_choice)
+
+
+# Изменение продукта
+def get_pr_to_edit(message):
+    # Проверка на тип данных
+    if message.text != int(message.text):
+        bot.send_message(admin_id, 'Пишите только целые числа!')
+        # Возвращаем на этап получения id товара
+        bot.register_next_step_handler(message, get_pr_to_edit)
+    else:
+        pr_id = int(message.text)
+        bot.send_message(admin_id, 'Сколько товара прибыло?')
+        # Переход на этап получения стока
+        bot.register_next_step_handler(message, get_pr_stock, pr_id)
+
+
+# Этап получения стока
+def get_pr_stock(message, pr_id):
+    # Проверка на тип данных
+    if message.text != int(message.text):
+        bot.send_message(admin_id, 'Пишите только целые числа!')
+        # Возвращаем на этап получения стока
+        bot.register_next_step_handler(message, get_pr_stock, pr_id)
+    else:
+        pr_stock = int(message.text)
+        db.change_pr_count(pr_id, pr_stock)
+        bot.send_message(admin_id, 'Количество товара успешно изменено!',
+                         reply_markup=bt.admin_buttons())
+        # Переход на этап получения выбора команды
+        bot.register_next_step_handler(message, admin_choice)
+
+
+# Удаление продукта
+def get_pr_to_del(message):
+    # Проверка на тип данных
+    if message.text != int(message.text):
+        bot.send_message(admin_id, 'Пишите только целые числа!')
+        # Возвращаем на этап получения id товара
+        bot.register_next_step_handler(message, get_pr_to_del)
+    else:
+        pr_id = int(message.text)
+        db.del_pr(pr_id)
+        bot.send_message(admin_id, 'Товар успешно удален!',
+                         reply_markup=bt.admin_buttons())
+        # Переход на этап получения выбора команды
+        bot.register_next_step_handler(message, admin_choice)
 
 
 # Запуск бота
