@@ -27,7 +27,8 @@ sql.execute('CREATE TABLE IF NOT EXISTS products ('
 sql.execute('CREATE TABLE IF NOT EXISTS cart ('
             'id INTEGER, '
             'user_pr_name TEXT, '
-            'user_pr_count INTEGER'
+            'user_pr_count INTEGER, '
+            'total REAL'
             ');')
 
 
@@ -62,8 +63,8 @@ def get_exact_pr(pr_id):
 
 
 # Добавление товара в корзину
-def add_pr_to_cart(user_id, user_pr, user_pr_count):
-    sql.execute('INSERT INTO users VALUES(?, ?, ?);', (user_id, user_pr, user_pr_count))
+def add_pr_to_cart(user_id, user_pr, user_pr_count, total):
+    sql.execute('INSERT INTO users VALUES(?, ?, ?, ?);', (user_id, user_pr, user_pr_count, total))
     # Фиксируем изменения
     connection.commit()
 

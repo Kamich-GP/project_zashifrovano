@@ -10,15 +10,21 @@ bot = telebot.TeleBot('7128987490:AAH10gUO9elimFV_jJW5a5cHHmRv2ukELGo')
 geolocator = Nominatim(user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36')
 # id админа
 admin_id = 6775701667
+# Временные данные
+users = {}
+
 
 # Обработчик команды /start
 @bot.message_handler(commands=['start'])
 def start(message):
     user_id = message.from_user.id
     check = db.check_user(user_id)
+    prods = db.get_pr()
     if check:
         bot.send_message(user_id, 'Добро пожаловать в наш магазин!',
                          reply_markup=telebot.types.ReplyKeyboardRemove())
+        bot.send_message(user_id, 'Выберите товар:',
+                         reply_markup=bt.main_menu_buttons(prods))
     else:
         bot.send_message(user_id, 'Здравствуйте! '
                                   'Давайте проведем регистрацию!\n'
@@ -73,6 +79,90 @@ def get_location(message, user_name, user_number):
         # Возврат на этап получения локации
         bot.register_next_step_handler(message, get_location,
                                        user_name, user_number)
+
+
+# Выбор количества товара
+@bot.callback_query_handler(lambda call: call.data in ['increment', 'decrement', ' to_cart', 'back'])
+def choose_pr_amount(call):
+    chat_id = call.message.chat.id
+
+    if call.data == 'increment':
+        new_amount = users[chat_id]['pr_count']
+        new_amount += 1
+        bot.edit_message_reply_markup(chat_id=chat_id, message_id=call.message.message.id,
+                                      reply_markup=bt.count_buttons(new_amount, 'increment'))
+    elif call.data == 'decrement':
+        new_amount = users[chat_id]['pr_count']
+        new_amount -= 1
+        bot.edit_message_reply_markup(chat_id=chat_id, message_id=call.message.message.id,
+                                      reply_markup=bt.count_buttons(new_amount, 'decrement'))
+    elif call.data == 'back':
+        prods = db.get_pr()
+        bot.delete_message(chat_id=chat_id, message_id=call.message.message.id)
+        bot.send_message(chat_id, 'Возвращаю вас обратно в меню',
+                         reply_markup=bt.main_menu_buttons(prods))
+    elif call.data == 'to_cart':
+        product = db.get_exact_pr(users[chat_id]['pr_name'])
+        pr_amount = users[chat_id]['pr_count']
+        total = product[3] * pr_amount
+        db.add_pr_to_cart(chat_id, product[0], pr_amount, total)
+        bot.delete_message(chat_id=chat_id, message_id=call.message.message.id)
+        bot.send_message(chat_id, 'Товар успешно добавлен в корзину, что хотите сделать?',
+                         reply_markup=bt.cart_buttons())
+
+
+# Корзина
+@bot.callback_query_handler(lambda call: call.data in ['cart', 'order', 'back', 'clear'])
+def cart_handle(call):
+    chat_id = call.message.chat.id
+
+    if call.data == 'cart':
+        cart = db.show_cart(chat_id)
+        text = f'Ваша корзина\n\n' \
+               f'Товар: {cart[1]}\n' \
+               f'Количество: {cart[2]}\n' \
+               f'Итого: ${cart[3]}'
+        bot.delete_message(chat_id=chat_id, message_id=call.message.message.id)
+        bot.send_message(chat_id, text, reply_markup=bt.cart_buttons())
+    elif call.data == 'clear':
+        db.clear_cart(chat_id)
+        prods = db.get_pr()
+        bot.delete_message(chat_id=chat_id, message_id=call.message.message.id)
+        bot.send_message(chat_id, 'Ваша корзина очищена!',
+                         reply_markup=bt.main_menu_buttons(prods))
+    elif call.data == 'order':
+        prods = db.get_pr()
+        cart = db.make_order(chat_id)
+        text = f'Новый заказ!\n\n' \
+               f'id пользователя: {cart[0][0]},\n' \
+               f'Товар: {cart[0][1]}\n' \
+               f'Количество: {cart[0][2]}\n' \
+               f'Общая сумма: ${cart[0][3]}\n' \
+               f'Адрес: {cart[1][0]}'
+        bot.send_message(admin_id, text)
+        bot.delete_message(chat_id=chat_id, message_id=call.message.message.id)
+        bot.send_message(chat_id, 'Заказ успешно оформлен, специалисты с вами свяжутся!',
+                         reply_markup=bt.main_menu_buttons(prods))
+    elif call.data == 'back':
+        prods = db.get_pr()
+        bot.delete_message(chat_id=chat_id, message_id=call.message.message.id)
+        bot.send_message(chat_id, 'Возвращаю вас обратно в меню',
+                         reply_markup=bt.main_menu_buttons(prods))
+
+
+# Вывод инфы о продукте
+@bot.callback_query_handler(lambda call: int(call.data) in db.get_pr())
+def get_product(call):
+    chat_id = call.message.chat.id
+    exact_product = db.get_exact_pr(int(call.data))
+    users[chat_id] = {'pr_name': call.data, 'pr_count': 1}
+    bot.delete_message(chat_id=chat_id, message_id=call.message.message.id)
+    bot.send_photo(chat_id, photo=exact_product[4],
+                   caption=f'{exact_product[0]},\n\n'
+                           f'Описание товара: {exact_product[1]}\n'
+                           f'Количество товара: {exact_product[2]}\n'
+                           f'Цена товара: {exact_product[3]}',
+                   reply_markup=bt.count_buttons())
 
 
 # Обработка команды /admin
@@ -137,8 +227,7 @@ def get_pr_description(message, pr_name):
 # Этап получения количества
 def get_pr_count(message, pr_name, pr_description):
     # Проверка на тип данных
-    if message.text != int(message.text):
-        print(type(message.text))
+    if message.text.isnumeric() is not True:
         bot.send_message(admin_id, 'Пишите только целые числа!')
         # Возвращаем на этап получения количества
         bot.register_next_step_handler(message, get_pr_count,
@@ -154,7 +243,7 @@ def get_pr_count(message, pr_name, pr_description):
 # Этап получения цены
 def get_pr_price(message, pr_name, pr_description, pr_count):
     # Проверка на тип данных
-    if message.text != float(message.text):
+    if message.text.isdecimal() is not True:
         bot.send_message(admin_id, 'Пишите только дробные числа!')
         # Возвращаем на этап получения количества
         bot.register_next_step_handler(message, get_pr_price,
@@ -182,7 +271,7 @@ def get_pr_photo(message, pr_name, pr_description, pr_count, pr_price):
 # Изменение продукта
 def get_pr_to_edit(message):
     # Проверка на тип данных
-    if message.text != int(message.text):
+    if message.text.isnumeric() is not True:
         bot.send_message(admin_id, 'Пишите только целые числа!')
         # Возвращаем на этап получения id товара
         bot.register_next_step_handler(message, get_pr_to_edit)
@@ -196,7 +285,7 @@ def get_pr_to_edit(message):
 # Этап получения стока
 def get_pr_stock(message, pr_id):
     # Проверка на тип данных
-    if message.text != int(message.text):
+    if message.text.isnumeric() is not True:
         bot.send_message(admin_id, 'Пишите только целые числа!')
         # Возвращаем на этап получения стока
         bot.register_next_step_handler(message, get_pr_stock, pr_id)
@@ -212,7 +301,7 @@ def get_pr_stock(message, pr_id):
 # Удаление продукта
 def get_pr_to_del(message):
     # Проверка на тип данных
-    if message.text != int(message.text):
+    if message.text.isnumeric() is not True:
         bot.send_message(admin_id, 'Пишите только целые числа!')
         # Возвращаем на этап получения id товара
         bot.register_next_step_handler(message, get_pr_to_del)
